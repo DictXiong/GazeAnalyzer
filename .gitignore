@@ -1,0 +1,6 @@
+gaze_analyze_tmp/*
+__pycache__
+*.7z
+*.rar
+*.zip
+*.tmp
