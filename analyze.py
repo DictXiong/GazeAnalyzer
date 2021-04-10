@@ -1,15 +1,17 @@
 # analyze.py
 # 目标: 输入同一个被试的所有句子情况 (眼动和图像), 处理信息
 
-from utils.pygazeanalyser.gazeplotter import draw_fixations, draw_heatmap, draw_scanpath, draw_raw, draw_display
-from utils.pygazeanalyser.idfreader import read_idf
-from utils.split import split_idf
-from matplotlib import pyplot
-from matplotlib.lines import Line2D
-import matplotlib
+from utils.idf_reader import read_idf
+from utils.idf_splitter import split_idf
 import os,math,csv
 
-file_path = os.path.split(os.path.realpath(__file__))[0] + '\\'
+file_path = os.path.split(os.path.realpath(__file__))[0]
+source_img_dir = "../source/eye_images"
+tmp_dir = os.path.join(file_path, "gaze_analyze_tmp")
+sentence_conf_file = os.path.join(file_path, r"utils/sentence.csv")
+value_f = 1
+value_s = 2
+DISPSIZE = (1680,1050)
 
 def distance(a:tuple, b:tuple):
     return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2)
@@ -64,8 +66,6 @@ def which_AOI(p:tuple, AOIs:list):
     print("WTF???")
     return len(AOIs)-1
 
-DISPSIZE = (1680,1050)
-
 class Sentence:
     def __init__(self, s:str, t:str, a:str):
         self.text = s
@@ -78,8 +78,7 @@ class Sentence:
         for i in range(len(self.AOIs)):
             self.AOIs[i].clear_KPI()
 sentences = []
-sentence_conf_file = file_path + r"utils\sentence.csv"
-with open(sentence_conf_file, 'r') as f:
+with open(sentence_conf_file, 'r', encoding="gb2312") as f:
     reader = csv.DictReader(f)
     for i in reader:
         a = i['sentence']
@@ -89,11 +88,6 @@ with open(sentence_conf_file, 'r') as f:
 def clear_sentences_KPI():
     for i in range(len(sentences)):
         sentences[i].clear_KPI()
-
-
-source_img_dir = r"D:\OneDrive - DictTech Co. Ltd\Workspace\2021-03-20-心双毕设实验\source\eye_images" + '\\'
-sentence = sentences[1]
-tmp_dir = file_path + "gaze_analyze_tmp" + '\\'
 
 # def draw_AOIs(output_dir:str):
 #     linewidth = 2
@@ -129,50 +123,60 @@ tmp_dir = file_path + "gaze_analyze_tmp" + '\\'
 # draw_AOIs(r"D:\OneDrive - DictTech Co. Ltd\Workspace\2021-03-20-心双毕设实验\source\eye_images_AOIs" + '\\')
 # exit(0)
 
-# 处理一个被试的所有数据. 输入: 该被试的 idf 文件.
+# 处理一个被试的一个刺激. 输入单个刺激的 idf 文件. 
 def single_analyze(idf_path:str, img_path:str, sentence:Sentence):
     AOIs = sentence.AOIs
-    idf_data = read_idf(idf_path, start = "okk", debug = False)
-    saccades = idf_data[0]['events']['Esac'] # [starttime, endtime, duration, startx, starty, endx, endy]
-    fixations = idf_data[0]['events']['Efix'] # [starttime, endtime, duration, endx, endy]
-
-    # draw!
-    if False:
-        draw_raw(idf_data[0]['x'], idf_data[0]['y'], DISPSIZE, imagefile=img_path, savefilename='rawplotfile.jpg')
-        draw_fixations(fixations, DISPSIZE, imagefile=img_path, durationsize=True, durationcolour=False, alpha=0.5, savefilename='scatterfile.jpg')
-        draw_scanpath(fixations, saccades, DISPSIZE, imagefile=img_path, alpha=0.5, savefilename='scanpathfile.jpg')	
-        draw_heatmap(fixations, DISPSIZE, imagefile=img_path, durationweight=True, alpha=0.5, savefilename='heatmapfile.jpg')
+    idf_data = read_idf(idf_path)
 
     total_fixation_time_image = 0
-    last_fixation = fixations[0]
+    last_fixation = None
     total_jump_dist = 0
-    total_fixation_count = len(fixations)
+    total_fixation_count = 0
     total_reverse_count = 0
     # calc KPI
     AOIs_entered = 0
     AOI_now = -1
-    AOI_enter_time = fixations[0][0]
-    for i in fixations:
-        AOI_index = which_AOI((i[3],i[4]), AOIs)
-        AOIs[AOI_index].KPI.total_fixation_time += i[2]
-        AOIs[AOI_index].KPI.fixation_count += 1
-        if (AOI_now != AOI_index): #entered a new AOI
-            AOIs[AOI_now].KPI.dwell_time += i[0] - AOI_enter_time
-            AOI_enter_time = i[0]
-            AOI_now = AOI_index
-            if AOIs[AOI_index].KPI.sequence == -1: # if never entered before
-                AOIs_entered += 1
-                AOIs[AOI_index].KPI.sequence = AOIs_entered
-                AOIs[AOI_index].KPI.entry_time = i[0]
-                AOIs[AOI_index].KPI.first_fixation_time = i[2]
-            else: # if entered one that visited 
-                AOIs[AOI_index].KPI.revisits += 1
-        # other KPI
-        total_fixation_time_image += i[2]
-        total_jump_dist += distance((i[3],i[4]), (last_fixation[3],last_fixation[4]))
-        total_reverse_count += 1 if i[3] < last_fixation[3] else 0
-        last_fixation = i
-    AOIs[AOI_now].KPI.dwell_time += last_fixation[1] - AOI_enter_time # 最后一个注视点的结束时间需要算进 dwell
+
+    last_saccade_time = 0
+    for i in idf_data:
+        if i["Value"] == value_f: # if it's a fixation
+            if last_fixation == None:
+                last_fixation = i
+            total_fixation_count += 1
+            total_fixation_time_image += i["Duration"]
+            AOI_index = which_AOI((i["mean_x"], i["mean_y"]), AOIs)
+            AOIs[AOI_index].KPI.total_fixation_time += i["Duration"]
+            AOIs[AOI_index].KPI.dwell_time += i["Duration"]
+            AOIs[AOI_index].KPI.fixation_count += 1
+            if (AOI_now != AOI_index):  #entered a new AOI
+                AOIs[AOI_now].KPI.dwell_time += last_saccade_time / 2
+                AOIs[AOI_index].KPI.dwell_time += last_saccade_time / 2
+                last_saccade_time = 0
+                AOI_now = AOI_index
+                if AOIs[AOI_index].KPI.sequence == -1: # if never entered before
+                    AOIs_entered += 1
+                    AOIs[AOI_index].KPI.sequence = AOIs_entered
+                    AOIs[AOI_index].KPI.entry_time = i["Start"]
+                    AOIs[AOI_index].KPI.first_fixation_time = i["Duration"]
+                else: # if entered one that visited
+                    AOIs[AOI_index].KPI.revisits += 1
+            elif last_saccade_time != 0:
+                AOIs[AOI_index].KPI.dwell_time += last_saccade_time
+                last_saccade_time = 0
+            # other KPI
+            total_jump_dist += distance((i["mean_x"],i["mean_y"]), (last_fixation["mean_x"],last_fixation["mean_y"]))
+            total_reverse_count += 1 if i["mean_x"] < last_fixation["mean_x"] else 0
+            last_fixation = i
+        elif i["Value"] == value_s:
+            last_saccade_time += i["Duration"]
+        else:
+            print(f"Unknown Data Type: {i['Value']}")
+            print("Press enter to continue or Ctrl+C to exit...")
+            input()
+    if last_saccade_time != 0:
+        AOIs[AOI_now].KPI.dwell_time += last_saccade_time
+        last_saccade_time = 0
+
     ans = []
     for i in range(len(AOIs)):
         tmp = AOIs[i].KPI.to_dict()
@@ -186,16 +190,15 @@ def single_analyze(idf_path:str, img_path:str, sentence:Sentence):
     tmp.total_fixation_count = total_fixation_count
     ans.append(tmp.to_dict())
     return ans
+    # if False:
+    #     for i in AOIs:
+    #         print(i.KPI.to_dict())
+    #     print(total_fixation_time_image)
+    #     print(total_jump_dist/(total_fixation_count-1))
+    #     print(total_reverse_count)
+    #     print(total_fixation_count)
 
-    if False:
-        for i in AOIs:
-            print(i.KPI.to_dict())
-        print(total_fixation_time_image)
-        print(total_jump_dist/(total_fixation_count-1))
-        print(total_reverse_count)
-        print(total_fixation_count)
-
-
+# 处理一个被试的所有数据. 输入: 该被试的 idf 文件和 psychopy 文件.
 def man_analyze(idf_path:str, psy_path:str, delta_t:float):
     ans = []
     split_idf(idf_path, psy_path, tmp_dir, delta_t)
@@ -214,7 +217,7 @@ def clear_tmp():
         os.remove(os.path.join(tmp_dir, i.text + '.txt'))
 
 def write_to_csv(data:dict, dst:str):
-    with open(dst, 'w', newline='') as f:
+    with open(dst, 'w', newline='', encoding="gb2312") as f:
         field = ['type','sentence','AOI','sequence','entry_time','dwell_time','revisits','total_fixation_time','first_fixation_time','fixation_count','total_fixation_time_image','aver_jump_dist','total_reverse_count','total_fixation_count']
         writer = csv.DictWriter(fieldnames=field, f=f)
         writer.writeheader()
@@ -226,7 +229,7 @@ def write_to_csv(data:dict, dst:str):
 # )
 
 # 群组分析. 要求: idf 目录和 psy 目录下的文件均仅包含人名.
-def group_analyze(config:str, dst_dir:str, save_for_everyone=False):
+def group_analyze(config:str, dst_dir:str, save_for_everyone=True):
     idf_files = []
     psy_files = []
     delta_t = []
@@ -249,9 +252,9 @@ def group_analyze(config:str, dst_dir:str, save_for_everyone=False):
             clear_tmp()
         except IOError as e:
             print(f"Error: maybe there's sth wrong in filenames: {str(e)}")
-            print("Press enter to go on or Ctrl+C to exit...")
+            print("Press enter to continue or Ctrl+C to exit...")
             input()
-        print(names[i], " OK")
+        print(" ", names[i], " OK")
         if save_for_everyone:
             write_to_csv(results[-1], os.path.join(dst_dir, names[i] + '.csv'))
     average = []
@@ -262,9 +265,9 @@ def group_analyze(config:str, dst_dir:str, save_for_everyone=False):
         average_line = {}
         # 遍历所有的标签
         for k in keys:
-            # 如果说这个标签的内容是字符串的话
             if k not in results[0][i]:
                 continue
+            # 如果说这个标签的内容是字符串的话
             if type(results[0][i][k]) == str:
                 average_line[k] = results[0][i][k]
             # 否则就是可加的数字
@@ -277,4 +280,5 @@ def group_analyze(config:str, dst_dir:str, save_for_everyone=False):
         average.append(average_line)
     write_to_csv(average, os.path.join(dst_dir, 'group_analyze.csv'))
 
-group_analyze(r"D:\OneDrive - DictTech Co. Ltd\Workspace\2021-03-20-心双毕设实验\PyGaze\config_test.csv", r"D:\OneDrive - DictTech Co. Ltd\Workspace\2021-03-20-心双毕设实验\output_test", True)
+if __name__ == "__main__":
+    group_analyze(os.path.join(file_path, r"../config.csv"), os.path.join(file_path, r"../output"), True)

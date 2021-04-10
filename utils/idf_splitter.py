@@ -68,7 +68,7 @@ def split_idf(idf_path:str, psy_path:str, dst_dir:str, delta_t:float):
         # 好 现在我们把 [start_time, end_time] 之间的数据写入文件
         with open(os.path.join(dst_dir, i[label_sentence] + ".txt"), 'w') as f:
             f.write(table_header)
-            f.write(f"{start_time + delta_time}\tMSG\t1\t# Message: okk\n")
+            #f.write(f"{start_time + delta_time}\tMSG\t1\t# Message: okk\n")
             for j in range(start_line, end_line+1):
                 f.write(eye_data[j])
 
