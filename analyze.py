@@ -281,4 +281,5 @@ def group_analyze(config:str, dst_dir:str, save_for_everyone=True):
     write_to_csv(average, os.path.join(dst_dir, 'group_analyze.csv'))
 
 if __name__ == "__main__":
-    group_analyze(os.path.join(file_path, r"../config.csv"), os.path.join(file_path, r"../output"), True)
+    #group_analyze(os.path.join(file_path, r"../config.csv"), os.path.join(file_path, r"../output"), True)
+    group_analyze(os.path.join(file_path, r"../config_elderly.csv"), os.path.join(file_path, r"../output_elderly"), True)

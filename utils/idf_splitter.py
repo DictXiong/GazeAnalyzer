@@ -57,9 +57,15 @@ def split_idf(idf_path:str, psy_path:str, dst_dir:str, delta_t:float):
     for i in psy_data:
         start_line = end_line + 1
         start_time = get_time_stamp_of_psy(i[label_starttime])
-        # 遍历直到眼动数据的时间戳进入了 i 的时间起点
-        while (get_timestamp_of_eye_line(eye_data[start_line]) < start_time + delta_time):
-            start_line += 1
+        # 遍历直到眼动数据的时间戳进入了 i 的时间起点. 此处的异常处理是为了处理 idf 眼动数据早于 psy 结束的情况, 会在 eye_data[start_line] 处 index_out_of_range, 解决办法是写个没啥意义的文件; 这里也不能不写文件, 否则 R 报错, 不生成处理后的文件.
+        try:
+            while (get_timestamp_of_eye_line(eye_data[start_line]) < start_time + delta_time):
+                start_line += 1
+        except IndexError:
+            with open(os.path.join(dst_dir, i[label_sentence] + ".txt"), 'w') as f:
+                f.write(table_header)
+                f.write(eye_data[-1])
+            continue
         end_line = start_line + 1
         end_time = start_time + get_time_stamp_of_psy(i[label_duration])
         while (get_timestamp_of_eye_line(eye_data[end_line]) <= end_time + delta_time):
